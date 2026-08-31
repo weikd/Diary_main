@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Users collection: All authenticated and app visitors can read public user profiles
+    // Users can create/update their own document
+    match /users/{userId} {
+      allow read: if isValidId(userId);
+      allow create, update: if isValidId(userId);
+      allow delete: if false;
+    }
+
+    // Articles collection
+    match /articles/{articleId} {
+      allow read: if isValidId(articleId);
+      allow create, update, delete: if isValidId(articleId);
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if isValidId(articleId) && isValidId(commentId);
+        allow create, update, delete: if isValidId(articleId) && isValidId(commentId);
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
