@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Article } from '../types';
-import { fetchMyArticles, deleteArticle } from '../lib/api';
+import { fetchMyArticles, deleteArticle, updateArticle } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { PenLine, Trash2, Edit3, Eye, Clock, BookOpen, AlertTriangle } from 'lucide-react';
+import { PenLine, Trash2, Edit3, Eye, Clock, BookOpen, AlertTriangle, Globe, Lock } from 'lucide-react';
 
 interface MyArticlesViewProps {
   onOpenEditor: () => void;
@@ -18,6 +18,8 @@ export function MyArticlesView({
   const { user } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'published' | 'private'>('all');
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteModal, setConfirmDeleteModal] = useState<Article | null>(null);
 
@@ -37,6 +39,21 @@ export function MyArticlesView({
   useEffect(() => {
     loadData();
   }, [user]);
+
+  const handleToggleVisibility = async (art: Article) => {
+    setTogglingId(art.id);
+    const newStatus = !art.isPublished;
+    try {
+      await updateArticle(art.id, { isPublished: newStatus });
+      setArticles(prev =>
+        prev.map(a => (a.id === art.id ? { ...a, isPublished: newStatus } : a))
+      );
+    } catch (err: any) {
+      alert(err.message || '修改状态失败');
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   const handleDeleteConfirm = async () => {
     if (!confirmDeleteModal) return;
@@ -60,6 +77,15 @@ export function MyArticlesView({
     );
   }
 
+  const publishedCount = articles.filter(a => a.isPublished).length;
+  const privateCount = articles.filter(a => !a.isPublished).length;
+
+  const filteredArticles = articles.filter(a => {
+    if (filter === 'published') return a.isPublished;
+    if (filter === 'private') return !a.isPublished;
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {/* 头部面板 */}
@@ -67,7 +93,7 @@ export function MyArticlesView({
         <div>
           <h2 className="text-xl font-bold text-slate-900">我的作品管理中心</h2>
           <p className="text-xs text-slate-500 mt-1">
-            集中管理您撰写的所有公开文章与私密草稿，支持随时编辑更新或安全删除
+            集中管理您撰写的所有公开文章与私密草稿，支持一键切换公开/私密可见性
           </p>
         </div>
         <button
@@ -79,6 +105,45 @@ export function MyArticlesView({
         </button>
       </div>
 
+      {/* 状态分类切换筛选 */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setFilter('all')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            filter === 'all'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          全部作品 ({articles.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter('published')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+            filter === 'published'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Globe className="w-3.5 h-3.5" />
+          公开展示 ({publishedCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter('private')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+            filter === 'private'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Lock className="w-3.5 h-3.5" />
+          私密文章 ({privateCount})
+        </button>
+      </div>
+
       {/* 列表区域 */}
       {loading ? (
         <div className="space-y-3">
@@ -86,12 +151,14 @@ export function MyArticlesView({
             <div key={n} className="bg-white p-5 rounded-xl border border-slate-200 animate-pulse h-24" />
           ))}
         </div>
-      ) : articles.length === 0 ? (
+      ) : filteredArticles.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300 p-8">
           <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-slate-700">您目前还没有发布任何文章</h3>
+          <h3 className="text-base font-semibold text-slate-700">
+            {filter === 'private' ? '目前没有私密文章' : filter === 'published' ? '目前没有公开发布的文章' : '您目前还没有发布任何文章'}
+          </h3>
           <p className="text-xs text-slate-400 mt-1 mb-5">
-            点击上方按钮，立即开始撰写并发布您的第一篇大作吧！
+            点击上方按钮，随时撰写并设置公开或私密文章。
           </p>
           <button
             onClick={onOpenEditor}
@@ -103,7 +170,7 @@ export function MyArticlesView({
         </div>
       ) : (
         <div className="space-y-3">
-          {articles.map((art) => (
+          {filteredArticles.map((art) => (
             <div
               key={art.id}
               className="bg-white p-5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs"
@@ -111,13 +178,14 @@ export function MyArticlesView({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${
+                    className={`text-[10px] px-2 py-0.5 rounded-md font-medium inline-flex items-center gap-1 ${
                       art.isPublished
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         : 'bg-amber-50 text-amber-700 border border-amber-200'
                     }`}
                   >
-                    {art.isPublished ? '已公开' : '私密草稿'}
+                    {art.isPublished ? <Globe className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                    {art.isPublished ? '已公开' : '私密(仅自己)'}
                   </span>
                   <span className="text-xs text-slate-400 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
@@ -140,7 +208,22 @@ export function MyArticlesView({
               </div>
 
               {/* 操作按钮组 */}
-              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              <div className="flex items-center gap-2 self-end sm:self-center shrink-0 flex-wrap">
+                {/* 快速切换公开/私密 */}
+                <button
+                  onClick={() => handleToggleVisibility(art)}
+                  disabled={togglingId === art.id}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1 cursor-pointer ${
+                    art.isPublished
+                      ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200'
+                      : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
+                  }`}
+                  title={art.isPublished ? '转为私密文章（广场不再可见）' : '转为公开发布（展示在广场）'}
+                >
+                  {art.isPublished ? <Lock className="w-3.5 h-3.5" /> : <Globe className="w-3.5 h-3.5" />}
+                  {togglingId === art.id ? '切换中...' : art.isPublished ? '设为私密' : '设为公开'}
+                </button>
+
                 <button
                   onClick={() => onViewArticle(art.id)}
                   className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
